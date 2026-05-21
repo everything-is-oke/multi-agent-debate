@@ -1,0 +1,79 @@
+import { NextRequest, NextResponse } from "next/server";
+import { AGENTS } from "@/lib/agents";
+
+export async function POST(req: NextRequest) {
+  try {
+    const { topic, agentId, round, previousMessages, selectedAgents, apiKey, provider, model } =
+      await req.json();
+
+    const agent = AGENTS.find((a) => a.id === agentId);
+    if (!agent) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+
+    // Build conversation context from previous messages
+    const contextMessages = (previousMessages || [])
+      .slice(-6)
+      .map((m: { agentId: string; content: string }) => {
+        const a = AGENTS.find((a) => a.id === m.agentId);
+        return `${a?.name || m.agentId}: ${m.content}`;
+      })
+      .join("\n\n");
+
+    const userPrompt = contextMessages
+      ? `The debate topic is: "${topic}"\n\nHere's what's been said so far:\n${contextMessages}\n\nRound ${round + 1}: Now it's your turn. Respond to the previous arguments, add your unique perspective, and advance the discussion. Be engaging and substantive.`
+      : `The debate topic is: "${topic}"\n\nRound 1: Open the debate with your initial perspective on this topic. Be bold, specific, and set the stage for the discussion.`;
+
+    // Determine API endpoint based on provider
+    let apiUrl = "https://api.openai.com/v1/chat/completions";
+    let modelName = model || "gpt-4o-mini";
+    let headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    };
+
+    if (provider === "mimo") {
+      apiUrl = "https://api.xiaomimimo.com/v1/chat/completions";
+      modelName = model || "MiMo-V2.5-Pro";
+    } else if (provider === "deepseek") {
+      apiUrl = "https://api.deepseek.com/v1/chat/completions";
+      modelName = model || "deepseek-chat";
+    } else if (provider === "custom") {
+      // Use custom endpoint provided by user
+      apiUrl = req.headers.get("x-custom-endpoint") || apiUrl;
+    }
+
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: modelName,
+        messages: [
+          { role: "system", content: agent.systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.8,
+        max_tokens: 500,
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      return NextResponse.json(
+        { error: `API error: ${response.status}`, details: error },
+        { status: response.status }
+      );
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || "No response generated.";
+
+    return NextResponse.json({ content, agentId });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Internal server error", details: String(error) },
+      { status: 500 }
+    );
+  }
+}
