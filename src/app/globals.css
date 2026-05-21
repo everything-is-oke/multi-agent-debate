@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -115,3 +116,24 @@
     @apply font-sans;
   }
 }
+
+/* Markdown prose overrides for dark theme */
+.prose h1 { @apply text-xl font-bold mb-3 mt-4; }
+.prose h2 { @apply text-lg font-bold mb-2 mt-3; }
+.prose h3 { @apply text-base font-bold mb-2 mt-3; }
+.prose p { @apply mb-2 leading-relaxed text-foreground/80; }
+.prose ul { @apply my-2 ml-4 list-disc; }
+.prose ol { @apply my-2 ml-4 list-decimal; }
+.prose li { @apply mb-1 text-foreground/80; }
+.prose li > p { @apply mb-0; }
+.prose strong { @apply font-bold text-foreground; }
+.prose em { @apply italic; }
+.prose code { @apply bg-muted px-1.5 py-0.5 rounded text-sm font-mono text-primary; }
+.prose pre { @apply bg-muted p-3 rounded-lg overflow-x-auto my-3; }
+.prose pre code { @apply bg-transparent p-0; }
+.prose blockquote { @apply border-l-2 border-primary/30 pl-4 italic text-muted-foreground my-3; }
+.prose hr { @apply border-border my-4; }
+.prose a { @apply text-primary underline underline-offset-2; }
+.prose table { @apply w-full border-collapse my-3; }
+.prose th { @apply border border-border px-3 py-2 text-left font-bold bg-muted; }
+.prose td { @apply border border-border px-3 py-2; }

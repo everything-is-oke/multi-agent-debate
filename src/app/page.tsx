@@ -39,6 +39,8 @@ import {
   X,
   ChevronRight,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type DebateStatus = "idle" | "config" | "debating" | "synthesizing" | "complete";
 
@@ -170,18 +172,6 @@ export default function Home() {
   };
 
   const getAgent = (id: string): Agent | undefined => AGENTS.find((a) => a.id === id);
-
-  const renderMarkdown = (text: string) => {
-    return text.split("\n").map((line, i) => {
-      if (line.startsWith("### ")) return <h3 key={i} className="font-bold text-base mt-3 mb-1">{line.replace("### ", "")}</h3>;
-      if (line.startsWith("## ")) return <h2 key={i} className="font-bold text-lg mt-4 mb-2">{line.replace("## ", "")}</h2>;
-      if (line.startsWith("# ")) return <h1 key={i} className="font-bold text-xl mt-4 mb-2">{line.replace("# ", "")}</h1>;
-      if (line.startsWith("- ")) return <li key={i} className="ml-4 list-disc text-muted-foreground">{line.replace("- ", "")}</li>;
-      if (line.match(/^\d+\./)) return <li key={i} className="ml-4 list-decimal text-muted-foreground">{line.replace(/^\d+\.\s*/, "")}</li>;
-      if (line.trim() === "") return <br key={i} />;
-      return <p key={i} className="text-foreground/80 leading-relaxed">{line}</p>;
-    });
-  };
 
   const exampleTopics = [
     "Is AI a net positive for humanity?",
@@ -542,8 +532,8 @@ export default function Home() {
                             <span className="text-[10px] text-muted-foreground ml-auto">R{msg.round + 1}</span>
                           </div>
                           <Card className="border-border/50">
-                            <CardContent className="p-3.5 text-sm leading-relaxed">
-                              {renderMarkdown(msg.content)}
+                            <CardContent className="p-3.5 text-sm prose prose-invert prose-sm max-w-none">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                             </CardContent>
                           </Card>
                         </div>
@@ -579,8 +569,8 @@ export default function Home() {
                       <span className="font-bold text-amber-500">Synthesis</span>
                     </div>
                     <Card className="border-amber-500/20 bg-amber-500/5">
-                      <CardContent className="p-5 text-sm">
-                        {renderMarkdown(synthesis)}
+                      <CardContent className="p-5 text-sm prose prose-invert prose-sm max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{synthesis}</ReactMarkdown>
                       </CardContent>
                     </Card>
                   </motion.div>
