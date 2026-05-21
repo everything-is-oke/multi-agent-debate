@@ -11,7 +11,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
-    // Build conversation context from previous messages
     const contextMessages = (previousMessages || [])
       .slice(-6)
       .map((m: { agentId: string; content: string }) => {
@@ -24,12 +23,13 @@ export async function POST(req: NextRequest) {
       ? `The debate topic is: "${topic}"\n\nHere's what's been said so far:\n${contextMessages}\n\nRound ${round + 1}: Now it's your turn. Respond to the previous arguments, add your unique perspective, and advance the discussion. Be engaging and substantive.`
       : `The debate topic is: "${topic}"\n\nRound 1: Open the debate with your initial perspective on this topic. Be bold, specific, and set the stage for the discussion.`;
 
-    // Use MiMo API from env
+    // Default: use MiMo from env
     const mimoApiKey = process.env.MIMO_API_KEY;
-    const mimoBaseUrl = process.env.MIMO_BASE_URL || "https://token-plan-sgp.xiaomimimo.com/v1";
+    const mimoBaseUrl = process.env.MIMO_BASE_URL || "https://llm.tbuglabs.com/v1";
+    const mimoModel = process.env.MIMO_MODEL || "mimo/mimo-v2.5";
 
     let apiUrl = `${mimoBaseUrl}/chat/completions`;
-    let modelName = model || "MiMo-V2.5-Pro";
+    let modelName = model || mimoModel;
     let headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey || mimoApiKey}`,
