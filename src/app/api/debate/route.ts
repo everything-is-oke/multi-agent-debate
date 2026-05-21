@@ -24,23 +24,23 @@ export async function POST(req: NextRequest) {
       ? `The debate topic is: "${topic}"\n\nHere's what's been said so far:\n${contextMessages}\n\nRound ${round + 1}: Now it's your turn. Respond to the previous arguments, add your unique perspective, and advance the discussion. Be engaging and substantive.`
       : `The debate topic is: "${topic}"\n\nRound 1: Open the debate with your initial perspective on this topic. Be bold, specific, and set the stage for the discussion.`;
 
-    // Determine API endpoint based on provider
-    let apiUrl = "https://api.openai.com/v1/chat/completions";
-    let modelName = model || "gpt-4o-mini";
+    // Use MiMo API from env
+    const mimoApiKey = process.env.MIMO_API_KEY;
+    const mimoBaseUrl = process.env.MIMO_BASE_URL || "https://token-plan-sgp.xiaomimimo.com/v1";
+
+    let apiUrl = `${mimoBaseUrl}/chat/completions`;
+    let modelName = model || "MiMo-V2.5-Pro";
     let headers: Record<string, string> = {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey || mimoApiKey}`,
     };
 
-    if (provider === "mimo") {
-      apiUrl = "https://api.xiaomimimo.com/v1/chat/completions";
-      modelName = model || "MiMo-V2.5-Pro";
-    } else if (provider === "deepseek") {
+    if (provider === "deepseek") {
       apiUrl = "https://api.deepseek.com/v1/chat/completions";
       modelName = model || "deepseek-chat";
-    } else if (provider === "custom") {
-      // Use custom endpoint provided by user
-      apiUrl = req.headers.get("x-custom-endpoint") || apiUrl;
+    } else if (provider === "openai") {
+      apiUrl = "https://api.openai.com/v1/chat/completions";
+      modelName = model || "gpt-4o-mini";
     }
 
     const response = await fetch(apiUrl, {

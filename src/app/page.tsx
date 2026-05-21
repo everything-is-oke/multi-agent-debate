@@ -3,11 +3,27 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AGENTS, Agent } from "@/lib/agents";
+import { generateDemoResponse, generateDemoSynthesis, DebateMessage } from "@/lib/debate";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  generateDemoResponse,
-  generateDemoSynthesis,
-  DebateMessage,
-} from "@/lib/debate";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Send,
   Play,
@@ -16,9 +32,12 @@ import {
   Brain,
   Settings,
   Sparkles,
-  ChevronDown,
   Zap,
   ExternalLink,
+  RotateCcw,
+  Check,
+  X,
+  ChevronRight,
 } from "lucide-react";
 
 type DebateStatus = "idle" | "config" | "debating" | "synthesizing" | "complete";
@@ -29,32 +48,27 @@ export default function Home() {
   const [messages, setMessages] = useState<DebateMessage[]>([]);
   const [currentRound, setCurrentRound] = useState(0);
   const [totalRounds, setTotalRounds] = useState(3);
-  const [selectedAgents, setSelectedAgents] = useState<string[]>(
-    AGENTS.map((a) => a.id)
-  );
+  const [selectedAgents, setSelectedAgents] = useState<string[]>(AGENTS.map((a) => a.id));
   const [synthesis, setSynthesis] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [typingAgent, setTypingAgent] = useState("");
-  const [demoMode, setDemoMode] = useState(true);
-  const [apiKey, setApiKey] = useState("");
-  const [provider, setProvider] = useState("openai");
-  const [model, setModel] = useState("");
+  const [useLiveApi, setUseLiveApi] = useState(true);
+  const [provider, setProvider] = useState("mimo");
+  const [customApiKey, setCustomApiKey] = useState("");
+  const [customModel, setCustomModel] = useState("");
   const [showSettings, setShowSettings] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
   useEffect(() => {
     scrollToBottom();
   }, [messages, synthesis]);
 
-  const toggleAgent = (id: string) => {
+  const toggleAgent = (id: string) =>
     setSelectedAgents((prev) =>
       prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]
     );
-  };
 
   const startDebate = async () => {
     if (!topic.trim() || selectedAgents.length < 2) return;
@@ -72,637 +86,530 @@ export default function Home() {
       for (const agent of activeAgents) {
         setTypingAgent(agent.id);
         setIsTyping(true);
-
-        // Simulate typing delay
-        await new Promise((r) => setTimeout(r, demoMode ? 800 : 1500));
+        await new Promise((r) => setTimeout(r, 800));
 
         let content: string;
 
-        if (demoMode) {
+        if (useLiveApi) {
+          try {
+            const res = await fetch("/api/debate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                topic,
+                agentId: agent.id,
+                round,
+                previousMessages: allMessages,
+                selectedAgents,
+                apiKey: customApiKey || undefined,
+                provider,
+                model: customModel || undefined,
+              }),
+            });
+            const data = await res.json();
+            content = data.content || data.error || "Failed to generate response.";
+          } catch {
+            content = "API request failed. Falling back to demo response.";
+            content = generateDemoResponse(agent.id, topic, round, allMessages);
+          }
+        } else {
           content = generateDemoResponse(agent.id, topic, round, allMessages);
-          // Simulate streaming effect
+          // Simulate streaming
           const words = content.split(" ");
           content = "";
           for (let i = 0; i < words.length; i++) {
             content += (i > 0 ? " " : "") + words[i];
-            if (i % 5 === 0) {
-              const currentMsg = {
-                agentId: agent.id,
-                content: content + " ▌",
-                round,
-                timestamp: Date.now(),
-              };
-              setMessages([...allMessages, currentMsg]);
-              await new Promise((r) => setTimeout(r, 30));
+            if (i % 4 === 0) {
+              setMessages([...allMessages, { agentId: agent.id, content: content + " ▌", round, timestamp: Date.now() }]);
+              await new Promise((r) => setTimeout(r, 25));
             }
           }
-        } else {
-          const res = await fetch("/api/debate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              topic,
-              agentId: agent.id,
-              round,
-              previousMessages: allMessages,
-              selectedAgents,
-              apiKey,
-              provider,
-              model,
-            }),
-          });
-          const data = await res.json();
-          content = data.content || "Failed to generate response.";
         }
 
-        const newMsg: DebateMessage = {
-          agentId: agent.id,
-          content,
-          round,
-          timestamp: Date.now(),
-        };
+        const newMsg: DebateMessage = { agentId: agent.id, content, round, timestamp: Date.now() };
         allMessages = [...allMessages, newMsg];
         setMessages([...allMessages]);
         setIsTyping(false);
         setTypingAgent("");
-
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
     // Synthesis
     setStatus("synthesizing");
     setIsTyping(true);
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 1000));
 
-    if (demoMode) {
-      const syn = generateDemoSynthesis(topic, allMessages);
-      setSynthesis(syn);
+    if (useLiveApi) {
+      try {
+        const res = await fetch("/api/debate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            topic: `Synthesize this debate about "${topic}" into a balanced summary with key insights, points of agreement/disagreement, and a recommended path forward. Use markdown formatting with headers.`,
+            agentId: "researcher",
+            round: 0,
+            previousMessages: allMessages,
+            selectedAgents,
+            apiKey: customApiKey || undefined,
+            provider,
+            model: customModel || undefined,
+          }),
+        });
+        const data = await res.json();
+        setSynthesis(data.content || generateDemoSynthesis(topic, allMessages));
+      } catch {
+        setSynthesis(generateDemoSynthesis(topic, allMessages));
+      }
     } else {
-      const res = await fetch("/api/debate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          topic: `Synthesize this debate about "${topic}" into a balanced summary with key insights, points of agreement/disagreement, and a recommended path forward.`,
-          agentId: "researcher",
-          round: 0,
-          previousMessages: allMessages,
-          selectedAgents,
-          apiKey,
-          provider,
-          model,
-        }),
-      });
-      const data = await res.json();
-      setSynthesis(data.content || "Synthesis failed.");
+      setSynthesis(generateDemoSynthesis(topic, allMessages));
     }
 
     setIsTyping(false);
     setStatus("complete");
   };
 
-  const getAgentColor = (id: string) =>
-    AGENTS.find((a) => a.id === id)?.color || "#3b82f6";
+  const getAgent = (id: string): Agent | undefined => AGENTS.find((a) => a.id === id);
 
-  const getAgent = (id: string): Agent | undefined =>
-    AGENTS.find((a) => a.id === id);
+  const renderMarkdown = (text: string) => {
+    return text.split("\n").map((line, i) => {
+      if (line.startsWith("### ")) return <h3 key={i} className="font-bold text-base mt-3 mb-1">{line.replace("### ", "")}</h3>;
+      if (line.startsWith("## ")) return <h2 key={i} className="font-bold text-lg mt-4 mb-2">{line.replace("## ", "")}</h2>;
+      if (line.startsWith("# ")) return <h1 key={i} className="font-bold text-xl mt-4 mb-2">{line.replace("# ", "")}</h1>;
+      if (line.startsWith("- ")) return <li key={i} className="ml-4 list-disc text-muted-foreground">{line.replace("- ", "")}</li>;
+      if (line.match(/^\d+\./)) return <li key={i} className="ml-4 list-decimal text-muted-foreground">{line.replace(/^\d+\.\s*/, "")}</li>;
+      if (line.trim() === "") return <br key={i} />;
+      return <p key={i} className="text-foreground/80 leading-relaxed">{line}</p>;
+    });
+  };
+
+  const exampleTopics = [
+    "Is AI a net positive for humanity?",
+    "Should we colonize Mars or fix Earth first?",
+    "Is remote work better than office work?",
+    "Should social media be regulated by governments?",
+    "Is universal basic income inevitable?",
+  ];
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f]">
-      {/* Header */}
-      <header className="fixed top-0 w-full z-50 border-b border-[#1e1e2e] bg-[#0a0a0f]/80 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-              <Brain className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-bold text-lg bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              DebateEngine
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="p-2 rounded-lg hover:bg-[#1e1e2e] transition-colors"
-            >
-              <Settings className="w-4 h-4 text-gray-400" />
-            </button>
-              <a
-                href="https://github.com"
-                target="_blank"
-                className="p-2 rounded-lg hover:bg-[#1e1e2e] transition-colors"
-              >
-                <ExternalLink className="w-4 h-4 text-gray-400" />
-            </a>
-          </div>
-        </div>
-      </header>
-
-      {/* Settings Panel */}
-      <AnimatePresence>
-        {showSettings && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="fixed top-16 w-full z-40 bg-[#111118] border-b border-[#1e1e2e] overflow-hidden"
-          >
-            <div className="max-w-7xl mx-auto px-4 py-4 space-y-3">
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={demoMode}
-                    onChange={(e) => setDemoMode(e.target.checked)}
-                    className="rounded"
-                  />
-                  <span className="text-sm text-gray-400">Demo Mode (no API key needed)</span>
-                </label>
+    <TooltipProvider>
+      <div className="dark min-h-screen bg-background">
+        {/* Header */}
+        <header className="fixed top-0 w-full z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+          <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center">
+                <Brain className="w-4 h-4 text-primary-foreground" />
               </div>
-              {!demoMode && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <select
-                    value={provider}
-                    onChange={(e) => setProvider(e.target.value)}
-                    className="bg-[#16161f] border border-[#1e1e2e] rounded-lg px-3 py-2 text-sm"
+              <span className="font-bold text-base tracking-tight">DebateEngine</span>
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">v1.0</Badge>
+            </div>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowSettings(!showSettings)}
                   >
-                    <option value="openai">OpenAI</option>
-                    <option value="mimo">Xiaomi MiMo</option>
-                    <option value="deepseek">DeepSeek</option>
-                    <option value="custom">Custom</option>
-                  </select>
-                  <input
-                    type="password"
-                    placeholder="API Key"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    className="bg-[#16161f] border border-[#1e1e2e] rounded-lg px-3 py-2 text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Model (optional)"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="bg-[#16161f] border border-[#1e1e2e] rounded-lg px-3 py-2 text-sm"
-                  />
+                    <Settings className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Settings</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger>
+                  <a href="https://github.com/everything-is-oke/multi-agent-debate" target="_blank" rel="noopener">
+                    <Button variant="ghost" size="icon">
+                      <ExternalLink className="w-4 h-4" />
+                    </Button>
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent>GitHub</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+        </header>
+
+        {/* Settings Panel */}
+        <AnimatePresence>
+          {showSettings && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="fixed top-14 w-full z-40 bg-card border-b border-border/50 overflow-hidden"
+            >
+              <div className="max-w-6xl mx-auto px-4 py-4 space-y-3">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-muted-foreground">Mode:</label>
+                    <Button
+                      variant={useLiveApi ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setUseLiveApi(true)}
+                    >
+                      Live API
+                    </Button>
+                    <Button
+                      variant={!useLiveApi ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setUseLiveApi(false)}
+                    >
+                      Demo
+                    </Button>
+                  </div>
+                  {useLiveApi && (
+                    <>
+                      <Select value={provider} onValueChange={(v) => setProvider(v || "mimo")}>
+                        <SelectTrigger className="w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="mimo">Xiaomi MiMo</SelectItem>
+                          <SelectItem value="openai">OpenAI</SelectItem>
+                          <SelectItem value="deepseek">DeepSeek</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="password"
+                        placeholder="Custom API Key (optional)"
+                        value={customApiKey}
+                        onChange={(e) => setCustomApiKey(e.target.value)}
+                        className="w-56"
+                      />
+                      <Input
+                        type="text"
+                        placeholder="Model (optional)"
+                        value={customModel}
+                        onChange={(e) => setCustomModel(e.target.value)}
+                        className="w-44"
+                      />
+                    </>
+                  )}
                 </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      <main className="pt-16">
-        {/* Hero Section */}
-        {status === "idle" && (
-          <motion.section
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="relative min-h-[80vh] flex items-center justify-center px-4"
-          >
-            {/* Background effects */}
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-              <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-            </div>
+        <main className={`pt-14 ${showSettings ? "pt-28" : "pt-14"} transition-all`}>
+          {/* Hero */}
+          {status === "idle" && (
+            <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative min-h-[85vh] flex items-center justify-center px-4">
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px]" />
+                <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] bg-purple-500/5 rounded-full blur-[120px]" />
+              </div>
 
-            <div className="relative z-10 max-w-3xl mx-auto text-center space-y-8">
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.1 }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[#1e1e2e] bg-[#111118] text-sm text-gray-400"
-              >
-                <Sparkles className="w-4 h-4 text-purple-400" />
-                Powered by Multi-Agent AI
-              </motion.div>
+              <div className="relative z-10 max-w-2xl mx-auto text-center space-y-8">
+                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>
+                  <Badge variant="secondary" className="gap-1.5 px-3 py-1">
+                    <Sparkles className="w-3 h-3" />
+                    Powered by Multi-Agent AI
+                  </Badge>
+                </motion.div>
 
-              <motion.h1
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="text-5xl md:text-7xl font-bold leading-tight"
-              >
-                <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                  Multi-Agent
-                </span>
-                <br />
-                Debate Engine
-              </motion.h1>
+                <motion.h1 initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.15 }} className="text-5xl md:text-6xl font-bold tracking-tight leading-[1.1]">
+                  <span className="bg-gradient-to-r from-primary via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    Multi-Agent
+                  </span>
+                  <br />
+                  Debate Engine
+                </motion.h1>
 
-              <motion.p
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="text-lg text-gray-400 max-w-xl mx-auto"
-              >
-                Watch AI agents with distinct personas — Researcher, Creative, Devil&apos;s
-                Advocate, Pragmatist, Philosopher — debate any topic in real-time.
-                Get synthesized insights from multiple perspectives.
-              </motion.p>
+                <motion.p initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="text-muted-foreground text-lg max-w-lg mx-auto leading-relaxed">
+                  Watch AI agents with distinct personas debate any topic in real-time.
+                  Get synthesized insights from multiple perspectives.
+                </motion.p>
 
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="flex flex-col items-center gap-4"
-              >
-                <div className="w-full max-w-xl">
-                  <div className="relative">
-                    <input
+                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.25 }} className="space-y-4">
+                  <div className="relative max-w-xl mx-auto">
+                    <Input
                       type="text"
-                      placeholder="Enter a debate topic... (e.g., 'Is AI a net positive for humanity?')"
+                      placeholder="Enter a debate topic..."
                       value={topic}
                       onChange={(e) => setTopic(e.target.value)}
-                      onKeyDown={(e) =>
-                        e.key === "Enter" && topic.trim() && setStatus("config")
-                      }
-                      className="w-full px-5 py-4 rounded-2xl bg-[#111118] border border-[#1e1e2e] text-white placeholder-gray-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/25 transition-all text-lg"
+                      onKeyDown={(e) => e.key === "Enter" && topic.trim() && setStatus("config")}
+                      className="h-12 text-base pr-12 bg-card"
                     />
-                    <button
-                      onClick={() => topic.trim() && setStatus("config")}
+                    <Button
+                      size="icon"
                       disabled={!topic.trim()}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                      onClick={() => topic.trim() && setStatus("config")}
+                      className="absolute right-1 top-1 h-10 w-10"
                     >
-                      <Send className="w-5 h-5" />
-                    </button>
+                      <ChevronRight className="w-5 h-5" />
+                    </Button>
                   </div>
-                </div>
 
-                <p className="text-xs text-gray-500">
-                  {demoMode
-                    ? "🎮 Demo Mode active — no API key needed"
-                    : "Configure your API key in settings ⚙️"}
-                </p>
-              </motion.div>
-
-              {/* Agent Preview */}
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.5 }}
-                className="flex justify-center gap-3 pt-4"
-              >
-                {AGENTS.map((agent) => (
-                  <div
-                    key={agent.id}
-                    className="flex flex-col items-center gap-1"
-                  >
-                    <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center text-xl border-2"
-                      style={{
-                        borderColor: agent.color + "40",
-                        background: agent.color + "15",
-                      }}
-                    >
-                      {agent.avatar}
-                    </div>
-                    <span className="text-[10px] text-gray-500">
-                      {agent.name}
-                    </span>
-                  </div>
-                ))}
-              </motion.div>
-            </div>
-          </motion.section>
-        )}
-
-        {/* Config Section */}
-        {status === "config" && (
-          <motion.section
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="max-w-3xl mx-auto px-4 py-12 space-y-8"
-          >
-            <div className="text-center space-y-2">
-              <h2 className="text-2xl font-bold">Configure Your Debate</h2>
-              <p className="text-gray-400">
-                Topic: <span className="text-white font-medium">&ldquo;{topic}&rdquo;</span>
-              </p>
-            </div>
-
-            {/* Agent Selection */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium text-gray-400 flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Select Agents (min 2)
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {AGENTS.map((agent) => {
-                  const selected = selectedAgents.includes(agent.id);
-                  return (
-                    <button
-                      key={agent.id}
-                      onClick={() => toggleAgent(agent.id)}
-                      className={`p-4 rounded-xl border text-left transition-all ${
-                        selected
-                          ? "border-opacity-50 bg-opacity-10"
-                          : "border-[#1e1e2e] bg-[#111118] opacity-50"
-                      }`}
-                      style={{
-                        borderColor: selected ? agent.color : undefined,
-                        background: selected ? agent.color + "10" : undefined,
-                      }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">{agent.avatar}</span>
-                        <div>
-                          <div className="font-medium text-sm">{agent.name}</div>
-                          <div className="text-xs text-gray-500">
-                            {agent.role}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Rounds */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium text-gray-400 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" />
-                Debate Rounds
-              </h3>
-              <div className="flex gap-2">
-                {[2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setTotalRounds(n)}
-                    className={`px-4 py-2 rounded-lg text-sm transition-all ${
-                      totalRounds === n
-                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                        : "bg-[#111118] text-gray-400 border border-[#1e1e2e] hover:border-[#2e2e3e]"
-                    }`}
-                  >
-                    {n} rounds
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Start Button */}
-            <div className="flex justify-center gap-3">
-              <button
-                onClick={() => setStatus("idle")}
-                className="px-6 py-3 rounded-xl border border-[#1e1e2e] text-gray-400 hover:bg-[#111118] transition-all"
-              >
-                Back
-              </button>
-              <button
-                onClick={startDebate}
-                disabled={selectedAgents.length < 2}
-                className="px-8 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-2 font-medium"
-              >
-                <Play className="w-5 h-5" />
-                Start Debate
-              </button>
-            </div>
-          </motion.section>
-        )}
-
-        {/* Debate Section */}
-        {(status === "debating" || status === "synthesizing" || status === "complete") && (
-          <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-            {/* Topic Header */}
-            <div className="text-center space-y-2 pb-4 border-b border-[#1e1e2e]">
-              <h2 className="text-xl font-bold">
-                &ldquo;{topic}&rdquo;
-              </h2>
-              <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
-                <span>
-                  Round {currentRound + 1}/{totalRounds}
-                </span>
-                <span>•</span>
-                <span>{selectedAgents.length} agents</span>
-                {demoMode && (
-                  <>
-                    <span>•</span>
-                    <span className="text-purple-400">Demo Mode</span>
-                  </>
-                )}
-              </div>
-
-              {/* Progress bar */}
-              <div className="w-full max-w-md mx-auto h-1 bg-[#1e1e2e] rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-gradient-to-r from-blue-500 to-purple-600"
-                  initial={{ width: "0%" }}
-                  animate={{
-                    width:
-                      status === "complete"
-                        ? "100%"
-                        : status === "synthesizing"
-                        ? "90%"
-                        : `${((currentRound * selectedAgents.length + (isTyping ? 1 : 0)) / (totalRounds * selectedAgents.length)) * 100}%`,
-                  }}
-                  transition={{ duration: 0.5 }}
-                />
-              </div>
-            </div>
-
-            {/* Agent Avatars Row */}
-            <div className="flex justify-center gap-2">
-              {AGENTS.filter((a) => selectedAgents.includes(a.id)).map(
-                (agent) => (
-                  <div
-                    key={agent.id}
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-lg border-2 transition-all ${
-                      typingAgent === agent.id ? "animate-pulse-glow scale-110" : ""
-                    }`}
-                    style={{
-                      borderColor:
-                        typingAgent === agent.id
-                          ? agent.color
-                          : agent.color + "30",
-                      background:
-                        typingAgent === agent.id
-                          ? agent.color + "20"
-                          : agent.color + "08",
-                    }}
-                  >
-                    {agent.avatar}
-                  </div>
-                )
-              )}
-            </div>
-
-            {/* Messages */}
-            <div className="space-y-4">
-              <AnimatePresence>
-                {messages.map((msg, i) => {
-                  const agent = getAgent(msg.agentId);
-                  if (!agent) return null;
-                  return (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="flex gap-3"
-                    >
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2"
-                        style={{
-                          borderColor: agent.color + "40",
-                          background: agent.color + "15",
-                        }}
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {exampleTopics.slice(0, 3).map((t) => (
+                      <Button
+                        key={t}
+                        variant="outline"
+                        size="sm"
+                        className="text-xs text-muted-foreground h-7"
+                        onClick={() => { setTopic(t); setStatus("config"); }}
                       >
-                        {agent.avatar}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className="font-medium text-sm"
-                            style={{ color: agent.color }}
-                          >
-                            {agent.name}
-                          </span>
-                          <span className="text-xs text-gray-600">
-                            {agent.role}
-                          </span>
-                          <span className="text-xs text-gray-700">
-                            R{msg.round + 1}
-                          </span>
-                        </div>
-                        <div className="bg-[#111118] border border-[#1e1e2e] rounded-2xl rounded-tl-sm p-4 text-sm leading-relaxed text-gray-300">
-                          {msg.content}
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
+                        {t}
+                      </Button>
+                    ))}
+                  </div>
+                </motion.div>
 
-              {/* Typing indicator */}
-              {isTyping && typingAgent && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex gap-3"
-                >
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0 border-2 animate-pulse"
-                    style={{
-                      borderColor: getAgentColor(typingAgent) + "40",
-                      background: getAgentColor(typingAgent) + "15",
+                {/* Agent Preview */}
+                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }} className="flex justify-center gap-4 pt-2">
+                  {AGENTS.map((agent) => (
+                    <Tooltip key={agent.id}>
+                      <TooltipTrigger>
+                        <div className="flex flex-col items-center gap-1.5 group">
+                          <Avatar className="h-11 w-11 border-2 transition-all group-hover:scale-110" style={{ borderColor: agent.color + "50" }}>
+                            <AvatarFallback className="text-lg" style={{ background: agent.color + "15" }}>
+                              {agent.avatar}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-[10px] text-muted-foreground font-medium">{agent.name}</span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="font-medium">{agent.name}</p>
+                        <p className="text-xs text-muted-foreground">{agent.role}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                </motion.div>
+
+                {/* Features */}
+                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.35 }} className="grid grid-cols-3 gap-4 pt-6 max-w-lg mx-auto">
+                  {[
+                    { icon: <Users className="w-4 h-4" />, label: "5 Personas" },
+                    { icon: <MessageSquare className="w-4 h-4" />, label: "Multi-Round" },
+                    { icon: <Zap className="w-4 h-4" />, label: "AI Synthesis" },
+                  ].map((f, i) => (
+                    <div key={i} className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-card/50 border border-border/50">
+                      <div className="text-primary">{f.icon}</div>
+                      <span className="text-xs text-muted-foreground font-medium">{f.label}</span>
+                    </div>
+                  ))}
+                </motion.div>
+              </div>
+            </motion.section>
+          )}
+
+          {/* Config */}
+          {status === "config" && (
+            <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl mx-auto px-4 py-12 space-y-8">
+              <div className="text-center space-y-2">
+                <Badge variant="outline">Configure Debate</Badge>
+                <h2 className="text-2xl font-bold mt-2">&ldquo;{topic}&rdquo;</h2>
+              </div>
+
+              {/* Agent Selection */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    Select Agents
+                    <Badge variant="secondary" className="ml-auto text-xs">{selectedAgents.length} selected</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {AGENTS.map((agent) => {
+                    const selected = selectedAgents.includes(agent.id);
+                    return (
+                      <button
+                        key={agent.id}
+                        onClick={() => toggleAgent(agent.id)}
+                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${
+                          selected
+                            ? "border-primary/30 bg-primary/5"
+                            : "border-border/50 bg-card opacity-50 hover:opacity-70"
+                        }`}
+                      >
+                        <Avatar className="h-9 w-9 border" style={{ borderColor: agent.color + "40" }}>
+                          <AvatarFallback style={{ background: agent.color + "15" }}>{agent.avatar}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm">{agent.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">{agent.role}</div>
+                        </div>
+                        {selected && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+
+              {/* Rounds */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4" />
+                    Debate Rounds
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex gap-2">
+                    {[2, 3, 4, 5].map((n) => (
+                      <Button
+                        key={n}
+                        variant={totalRounds === n ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setTotalRounds(n)}
+                        className="flex-1"
+                      >
+                        {n}
+                      </Button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Actions */}
+              <div className="flex justify-center gap-3">
+                <Button variant="outline" onClick={() => setStatus("idle")}>
+                  <X className="w-4 h-4 mr-1" /> Back
+                </Button>
+                <Button disabled={selectedAgents.length < 2} onClick={startDebate} className="gap-1.5">
+                  <Play className="w-4 h-4" /> Start Debate
+                </Button>
+              </div>
+            </motion.section>
+          )}
+
+          {/* Debate */}
+          {(status === "debating" || status === "synthesizing" || status === "complete") && (
+            <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+              {/* Header */}
+              <div className="text-center space-y-3 pb-4 border-b border-border/50">
+                <h2 className="text-xl font-bold">&ldquo;{topic}&rdquo;</h2>
+                <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
+                  <Badge variant="outline">Round {currentRound + 1}/{totalRounds}</Badge>
+                  <Badge variant="outline">{selectedAgents.length} agents</Badge>
+                  {useLiveApi ? (
+                    <Badge variant="default" className="bg-emerald-600">Live: {provider === "mimo" ? "MiMo" : provider}</Badge>
+                  ) : (
+                    <Badge variant="secondary">Demo Mode</Badge>
+                  )}
+                </div>
+                <div className="w-full max-w-md mx-auto h-1.5 bg-muted rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-primary to-purple-500 rounded-full"
+                    initial={{ width: "0%" }}
+                    animate={{
+                      width: status === "complete" ? "100%" : status === "synthesizing" ? "90%" : `${((currentRound * selectedAgents.length + (isTyping ? 1 : 0)) / (totalRounds * selectedAgents.length)) * 100}%`,
                     }}
+                    transition={{ duration: 0.5 }}
+                  />
+                </div>
+              </div>
+
+              {/* Agent Row */}
+              <div className="flex justify-center gap-2">
+                {AGENTS.filter((a) => selectedAgents.includes(a.id)).map((agent) => (
+                  <Tooltip key={agent.id}>
+                    <TooltipTrigger>
+                      <Avatar
+                        className={`h-9 w-9 border-2 transition-all ${typingAgent === agent.id ? "animate-pulse-glow scale-110" : ""}`}
+                        style={{ borderColor: typingAgent === agent.id ? agent.color : agent.color + "25" }}
+                      >
+                        <AvatarFallback style={{ background: agent.color + (typingAgent === agent.id ? "25" : "08") }}>
+                          {agent.avatar}
+                        </AvatarFallback>
+                      </Avatar>
+                    </TooltipTrigger>
+                    <TooltipContent>{agent.name}</TooltipContent>
+                  </Tooltip>
+                ))}
+              </div>
+
+              {/* Messages */}
+              <div className="space-y-4">
+                <AnimatePresence>
+                  {messages.map((msg, i) => {
+                    const agent = getAgent(msg.agentId);
+                    if (!agent) return null;
+                    return (
+                      <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="flex gap-3">
+                        <Avatar className="h-9 w-9 flex-shrink-0 border-2" style={{ borderColor: agent.color + "30" }}>
+                          <AvatarFallback style={{ background: agent.color + "12" }}>{agent.avatar}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="font-semibold text-sm" style={{ color: agent.color }}>{agent.name}</span>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5">{agent.role}</Badge>
+                            <span className="text-[10px] text-muted-foreground ml-auto">R{msg.round + 1}</span>
+                          </div>
+                          <Card className="border-border/50">
+                            <CardContent className="p-3.5 text-sm leading-relaxed">
+                              {renderMarkdown(msg.content)}
+                            </CardContent>
+                          </Card>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+
+                {/* Typing */}
+                {isTyping && typingAgent && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3">
+                    <Avatar className="h-9 w-9 flex-shrink-0 border-2 animate-pulse" style={{ borderColor: getAgent(typingAgent)?.color + "40" }}>
+                      <AvatarFallback style={{ background: getAgent(typingAgent)?.color + "15" }}>
+                        {getAgent(typingAgent)?.avatar}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex items-center gap-1.5 bg-card border border-border/50 rounded-xl px-4 py-2.5">
+                      <div className="typing-dot w-2 h-2 rounded-full bg-muted-foreground" />
+                      <div className="typing-dot w-2 h-2 rounded-full bg-muted-foreground" />
+                      <div className="typing-dot w-2 h-2 rounded-full bg-muted-foreground" />
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Synthesis */}
+                {(status === "synthesizing" || status === "complete") && synthesis && (
+                  <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="pt-4">
+                    <Separator className="mb-6" />
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
+                        <Zap className="w-4 h-4 text-white" />
+                      </div>
+                      <span className="font-bold text-amber-500">Synthesis</span>
+                    </div>
+                    <Card className="border-amber-500/20 bg-amber-500/5">
+                      <CardContent className="p-5 text-sm">
+                        {renderMarkdown(synthesis)}
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Restart */}
+              {status === "complete" && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="flex justify-center pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => { setStatus("idle"); setMessages([]); setSynthesis(""); setCurrentRound(0); }}
+                    className="gap-1.5"
                   >
-                    {getAgent(typingAgent)?.avatar}
-                  </div>
-                  <div className="flex items-center gap-1 bg-[#111118] border border-[#1e1e2e] rounded-2xl rounded-tl-sm px-4 py-3">
-                    <div className="typing-dot w-2 h-2 rounded-full bg-gray-400" />
-                    <div className="typing-dot w-2 h-2 rounded-full bg-gray-400" />
-                    <div className="typing-dot w-2 h-2 rounded-full bg-gray-400" />
-                  </div>
+                    <RotateCcw className="w-4 h-4" /> Start New Debate
+                  </Button>
                 </motion.div>
               )}
-
-              {/* Synthesis */}
-              {(status === "synthesizing" || status === "complete") && synthesis && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5 }}
-                  className="mt-8"
-                >
-                  <div className="flex items-center gap-2 mb-3">
-                    <Zap className="w-5 h-5 text-yellow-400" />
-                    <span className="font-bold text-yellow-400">
-                      Debate Synthesis
-                    </span>
-                  </div>
-                  <div className="bg-gradient-to-br from-[#111118] to-[#16161f] border border-yellow-500/20 rounded-2xl p-6 text-sm leading-relaxed text-gray-300 whitespace-pre-wrap">
-                    {synthesis}
-                  </div>
-                </motion.div>
-              )}
-
-              <div ref={messagesEndRef} />
             </div>
+          )}
 
-            {/* Restart */}
-            {status === "complete" && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5 }}
-                className="flex justify-center pt-4"
-              >
-                <button
-                  onClick={() => {
-                    setStatus("idle");
-                    setMessages([]);
-                    setSynthesis("");
-                    setCurrentRound(0);
-                  }}
-                  className="px-6 py-3 rounded-xl bg-[#111118] border border-[#1e1e2e] hover:border-blue-500/30 transition-all flex items-center gap-2"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Start New Debate
-                </button>
-              </motion.div>
-            )}
-          </div>
-        )}
-
-        {/* Features Section (idle only) */}
-        {status === "idle" && (
-          <section className="max-w-5xl mx-auto px-4 py-16">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[
-                {
-                  icon: <Users className="w-6 h-6" />,
-                  title: "5 Unique Personas",
-                  desc: "Researcher, Creative, Devil's Advocate, Pragmatist, and Philosopher — each brings a distinct lens to any topic.",
-                  color: "#3b82f6",
-                },
-                {
-                  icon: <MessageSquare className="w-6 h-6" />,
-                  title: "Multi-Round Debate",
-                  desc: "Agents respond to each other's arguments, building on previous points and challenging assumptions in real-time.",
-                  color: "#8b5cf6",
-                },
-                {
-                  icon: <Zap className="w-6 h-6" />,
-                  title: "AI Synthesis",
-                  desc: "After the debate, a synthesis agent summarizes key insights, tensions, and recommends a balanced path forward.",
-                  color: "#f59e0b",
-                },
-              ].map((f, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.6 + i * 0.1 }}
-                  className="p-6 rounded-2xl bg-[#111118] border border-[#1e1e2e] hover:border-[#2e2e3e] transition-colors"
-                >
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
-                    style={{
-                      color: f.color,
-                      background: f.color + "15",
-                    }}
-                  >
-                    {f.icon}
-                  </div>
-                  <h3 className="font-bold mb-2">{f.title}</h3>
-                  <p className="text-sm text-gray-400">{f.desc}</p>
-                </motion.div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Footer */}
-        <footer className="border-t border-[#1e1e2e] py-8 text-center text-sm text-gray-600">
-          <p>
-            Built with Next.js + Tailwind CSS • Supports OpenAI, Xiaomi MiMo,
-            DeepSeek & more
-          </p>
-        </footer>
-      </main>
-    </div>
+          {/* Footer */}
+          <footer className="border-t border-border/30 py-6 text-center text-xs text-muted-foreground mt-12">
+            Built with Next.js + shadcn/ui • Powered by Xiaomi MiMo V2.5
+          </footer>
+        </main>
+      </div>
+    </TooltipProvider>
   );
 }
