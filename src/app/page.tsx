@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AGENTS, Agent } from "@/lib/agents";
+import { AGENTS, Agent, cleanAiText } from "@/lib/agents";
 import { generateDemoResponse, generateDemoSynthesis, DebateMessage } from "@/lib/debate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -177,9 +177,10 @@ export default function Home() {
           setStreamingText(content);
         }
 
+        const cleaned = cleanAiText(content);
         const newMsg: DebateMessage = {
           agentId: agent.id,
-          content,
+          content: cleaned,
           round,
           timestamp: Date.now(),
         };
