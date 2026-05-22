@@ -131,8 +131,7 @@ export async function POST(req: NextRequest) {
 }
 
 function detectLanguage(text: string): string {
-  // Simple heuristic detection
-  const indonesian = /\b(yang|dan|ini|itu|untuk|dengan|tidak|akan|bisa|sudah|pada|dari|ke|di|adalah|juga|lebih|atau|sangat|saya|kamu|mereka|kita|apa|bagaimana|mengapa|harus|seperti|kalau|gak|ga|dong|sih|banget|aja|udah|emang|gimana|kenapa|kalo|bener|kayak)\b/i;
+  const indonesian = /\b(yang|dan|ini|itu|untuk|dengan|tidak|akan|bisa|sudah|pada|dari|ke|di|adalah|juga|lebih|atau|sangat|saya|kamu|mereka|kita|apa|bagaimana|mengapa|harus|seperti|kalau|gak|ga|dong|sih|banget|aja|udah|emang|gimana|kenapa|kalo|bener|kayak|apakah|mengapa|kenapa|bagaimana|dimana|kapan|siapa|menggunakan|merupakan|terhadap|tentang|antara|selama|sebelum|sesudah|setelah|hanya|namun|tetapi|sehingga|karena|meskipun|walaupun|oleh|para|para|begitu|begini|saja|hampir|tentu|mungkin|lagi|sedang|tengah|pernah|belum|tiap|setiap|seluruh|semua|beberapa|berbagai|lain|lainnya|masih|telah|pun|adanya|ialah|yaitu|yakni|lah|kah|punya|mana|gimana|ngapain|makanya|soalnya|emang|bgt|tp|dg|utk|dgn|tdk|bs|sdh|blm|org|lg|sgt|trs|krn|jd|bkn|sm|dlm|mnt|hr|thn|bln|kmrn|ntr|skrg|nih|tuh|deh|kok|dong|kan|lah|sih|ya|yo|woi|oy|bang|mas|mbak|pak|bu|kak|bro|sis|gan|cuy|cuk|bjir|anjir|wkwk|wk|kwkw|hehe|haha|hihi|xixi|asw|goblo|tolol|bego|pinter|pintar|cantik|ganteng|jelek|bagus|jelek|kotor|bersih|cepat|lambat|besar|kecil|tinggi|pendek|panjang|tebal|tipis|keras|lunak|berat|ringan|lama|baru|muda|tua|kaya|miskin|senang|sedih|marah|takut|cinta|benci|lapar|kenyang|haus|ngantuk|lelah|sehat|sakit)\b/i;
   const chinese = /[\u4e00-\u9fff]/;
   const japanese = /[\u3040-\u309f\u30a0-\u30ff]/;
   const korean = /[\uac00-\ud7af\u1100-\u11ff]/;
