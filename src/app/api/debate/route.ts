@@ -18,12 +18,18 @@ export async function POST(req: NextRequest) {
     })
     .join("\n\n");
 
-  // Detect language from topic
-  const langHint = detectLanguage(topic);
+  // Detect language from topic + previous messages
+  const allText = topic + " " + (previousMessages || []).map((m: { content: string }) => m.content).join(" ");
+  const langHint = detectLanguage(allText);
+
+  // Inject language instruction into system prompt so it takes priority
+  const systemPrompt = langHint
+    ? `${agent.systemPrompt}\n\nCRITICAL LANGUAGE RULE: ${langHint} You MUST write your ENTIRE response in that language. Do NOT use English.`
+    : agent.systemPrompt;
 
   const userPrompt = contextMessages
-    ? `The debate topic is: "${topic}"\n\nHere's what's been said so far:\n${contextMessages}\n\nRound ${round + 1}: Now it's your turn. Respond to the previous arguments, add your unique perspective, and advance the discussion. Be engaging and substantive. ${langHint}`
-    : `The debate topic is: "${topic}"\n\nRound 1: Open the debate with your initial perspective on this topic. Be bold, specific, and set the stage for the discussion. ${langHint}`;
+    ? `The debate topic is: "${topic}"\n\nHere's what's been said so far:\n${contextMessages}\n\nRound ${round + 1}: Now it's your turn. Respond to the previous arguments, add your unique perspective, and advance the discussion. Be engaging and substantive. ${langHint ? `\n\nREMEMBER: Write your ENTIRE response in the detected language, NOT English.` : ""}`
+    : `The debate topic is: "${topic}"\n\nRound 1: Open the debate with your initial perspective on this topic. Be bold, specific, and set the stage for the discussion. ${langHint ? `\n\nREMEMBER: Write your ENTIRE response in the detected language, NOT English.` : ""}`;
 
   const mimoApiKey = process.env.MIMO_API_KEY;
   const mimoBaseUrl = process.env.MIMO_BASE_URL || "https://llm.tbuglabs.com/v1";
@@ -51,7 +57,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: modelName,
         messages: [
-          { role: "system", content: agent.systemPrompt },
+          { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
         temperature: 0.8,
